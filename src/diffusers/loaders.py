@@ -1236,7 +1236,6 @@ class LoraLoaderMixin:
             updates[layer][elem] = value
         print(f"Total keys: {len(updates)}.")
 
-        visited_keys = []
         for key, value in state_dict.items():
             if "lora_down" in key:
                 lora_name = key.split(".")[0]
@@ -1276,15 +1275,23 @@ class LoraLoaderMixin:
                     if "self_attn" in diffusers_name:
                         te_state_dict[diffusers_name] = value
                         te_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict[lora_name_up]
-                visited_keys.append(key)
         
         unet_state_dict = {f"{UNET_NAME}.{module_name}": params for module_name, params in unet_state_dict.items()}
         te_state_dict = {f"{TEXT_ENCODER_NAME}.{module_name}": params for module_name, params in te_state_dict.items()}
         new_state_dict = {**unet_state_dict, **te_state_dict}
 
-        print(f"Total keys: {len(updates)}")
-        print(f"Visited keys: {len(visited_keys)}")
-        print(f"Keys that were unused: {set(updates.keys().difference(set(visited_keys)))}")
+        mlp_ff_keys = []
+        diffusers_keys = []
+        for k in updates: 
+            if "mlp" in k or "ff" in k:
+                mlp_ff_keys.append(k) 
+        for k in new_state_dict:
+            if "mlp" in k or "ff" in k:
+                diffusers_keys.append(k) 
+
+        print(f"Keys containing 'mlp' or 'ff' in their names from the original state dict: {mlp_ff_keys}")
+        print(f"Keys containing 'mlp' or 'ff' in their names from the diffusers state dict: {diffusers_keys}")
+
         return new_state_dict, network_alpha
 
 
