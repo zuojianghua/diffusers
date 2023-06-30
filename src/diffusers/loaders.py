@@ -1230,6 +1230,13 @@ class LoraLoaderMixin:
         te_state_dict = {}
         network_alpha = None
 
+        updates = defaultdict(dict)
+        for key, value in state_dict.items():
+            layer, elem = key.split('.', 1)
+            updates[layer][elem] = value
+        print(f"Total keys: {len(updates)}.")
+
+        visited_keys = []
         for key, value in state_dict.items():
             if "lora_down" in key:
                 lora_name = key.split(".")[0]
@@ -1269,10 +1276,15 @@ class LoraLoaderMixin:
                     if "self_attn" in diffusers_name:
                         te_state_dict[diffusers_name] = value
                         te_state_dict[diffusers_name.replace(".down.", ".up.")] = state_dict[lora_name_up]
-
+                visited_keys.append(key)
+        
         unet_state_dict = {f"{UNET_NAME}.{module_name}": params for module_name, params in unet_state_dict.items()}
         te_state_dict = {f"{TEXT_ENCODER_NAME}.{module_name}": params for module_name, params in te_state_dict.items()}
         new_state_dict = {**unet_state_dict, **te_state_dict}
+
+        print(f"Total keys: {len(updates)}")
+        print(f"Visited keys: {len(visited_keys)}")
+        print(f"Keys that were unused: {set(updates.keys().difference(set(visited_keys)))}")
         return new_state_dict, network_alpha
 
 
