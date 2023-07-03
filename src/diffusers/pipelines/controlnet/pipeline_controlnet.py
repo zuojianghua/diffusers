@@ -953,11 +953,9 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
                 for s, e in zip(control_guidance_start, control_guidance_end)
             ]
             controlnet_keep.append(keeps[0] if len(keeps) == 1 else keeps)
-        print(f"ControlNet keep: {len(controlnet_keep)}")
+
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
-        print(f"num_inference_steps: {num_inference_steps}")
-        print(f"timesteps: {len(timesteps)}")
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
                 # expand the latents if we are doing classifier free guidance
@@ -974,8 +972,6 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
                     control_model_input = latent_model_input
                     controlnet_prompt_embeds = prompt_embeds
 
-                print(f"Inside loop: {i}:")
-                print(f"{controlnet_keep[i]}")
                 if isinstance(controlnet_keep[i], list):
                     cond_scale = [c * s for c, s in zip(controlnet_conditioning_scale, controlnet_keep[i])]
                 else:
