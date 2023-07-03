@@ -972,7 +972,8 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
                     control_model_input = latent_model_input
                     controlnet_prompt_embeds = prompt_embeds
 
-                print(f"Inside loop: {i}: {controlnet_keep[i]}")
+                print(f"Inside loop: {i}:")
+                print(f"{controlnet_keep[i]}")
                 if isinstance(controlnet_keep[i], list):
                     cond_scale = [c * s for c, s in zip(controlnet_conditioning_scale, controlnet_keep[i])]
                 else:
