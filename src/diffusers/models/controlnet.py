@@ -631,6 +631,7 @@ class ControlNetModel(ModelMixin, ConfigMixin):
         class_labels: Optional[torch.Tensor] = None,
         timestep_cond: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
+        added_cond_kwargs: Optional[Dict[str, torch.Tensor]] = None,
         cross_attention_kwargs: Optional[Dict[str, Any]] = None,
         guess_mode: bool = False,
         return_dict: bool = True,
@@ -707,6 +708,7 @@ class ControlNetModel(ModelMixin, ConfigMixin):
         t_emb = t_emb.to(dtype=sample.dtype)
 
         emb = self.time_embedding(t_emb, timestep_cond)
+        aug_emb = None
 
         if self.class_embedding is not None:
             if class_labels is None:
@@ -717,6 +719,30 @@ class ControlNetModel(ModelMixin, ConfigMixin):
 
             class_emb = self.class_embedding(class_labels).to(dtype=self.dtype)
             emb = emb + class_emb
+
+        if "addition_embed_type" in self.config:
+            if self.config.addition_embed_type == "text":
+                aug_emb = self.add_embedding(encoder_hidden_states)
+
+            elif self.config.addition_embed_type == "text_time":
+                if "text_embeds" not in added_cond_kwargs:
+                    raise ValueError(
+                        f"{self.__class__} has the config param `addition_embed_type` set to 'text_time' which requires the keyword argument `text_embeds` to be passed in `added_cond_kwargs`"
+                    )
+                text_embeds = added_cond_kwargs.get("text_embeds")
+                if "time_ids" not in added_cond_kwargs:
+                    raise ValueError(
+                        f"{self.__class__} has the config param `addition_embed_type` set to 'text_time' which requires the keyword argument `time_ids` to be passed in `added_cond_kwargs`"
+                    )
+                time_ids = added_cond_kwargs.get("time_ids")
+                time_embeds = self.add_time_proj(time_ids.flatten())
+                time_embeds = time_embeds.reshape((text_embeds.shape[0], -1))
+
+                add_embeds = torch.concat([text_embeds, time_embeds], dim=-1)
+                add_embeds = add_embeds.to(emb.dtype)
+                aug_emb = self.add_embedding(add_embeds)
+
+        emb = emb + aug_emb if aug_emb is not None else emb
 
         # 2. pre-process
         sample = self.conv_in(sample)
