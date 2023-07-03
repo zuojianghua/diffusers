@@ -956,7 +956,7 @@ class StableDiffusionControlNetPipeline(DiffusionPipeline, TextualInversionLoade
         print(f"ControlNet keep: {len(controlnet_keep)}")
         # 8. Denoising loop
         num_warmup_steps = len(timesteps) - num_inference_steps * self.scheduler.order
-        print(f"num_warmup_steps: {num_warmup_steps}")
+        print(f"num_inference_steps: {num_inference_steps}")
         print(f"timesteps: {timesteps}")
         with self.progress_bar(total=num_inference_steps) as progress_bar:
             for i, t in enumerate(timesteps):
