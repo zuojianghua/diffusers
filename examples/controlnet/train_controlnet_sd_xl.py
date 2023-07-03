@@ -14,6 +14,8 @@
 # See the License for the specific language governing permissions and
 
 import argparse
+import functools
+import gc
 import logging
 import math
 import os
@@ -72,7 +74,7 @@ def image_grid(imgs, rows, cols):
     return grid
 
 
-def log_validation(vae, text_encoder, tokenizer, unet, controlnet, args, accelerator, weight_dtype, step):
+def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step):
     logger.info("Running validation... ")
 
     controlnet = accelerator.unwrap_model(controlnet)
@@ -80,8 +82,6 @@ def log_validation(vae, text_encoder, tokenizer, unet, controlnet, args, acceler
     pipeline = StableDiffusionControlNetPipeline.from_pretrained(
         args.pretrained_model_name_or_path,
         vae=vae,
-        text_encoder=text_encoder,
-        tokenizer=tokenizer,
         unet=unet,
         controlnet=controlnet,
         safety_checker=None,
@@ -171,11 +171,11 @@ def log_validation(vae, text_encoder, tokenizer, unet, controlnet, args, acceler
         return image_logs
 
 
-def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: str, revision: str):
+def import_model_class_from_model_name_or_path(
+    pretrained_model_name_or_path: str, revision: str, subfolder: str = "text_encoder"
+):
     text_encoder_config = PretrainedConfig.from_pretrained(
-        pretrained_model_name_or_path,
-        subfolder="text_encoder",
-        revision=revision,
+        pretrained_model_name_or_path, subfolder=subfolder, revision=revision, use_auth_token=True
     )
     model_class = text_encoder_config.architectures[0]
 
@@ -183,10 +183,10 @@ def import_model_class_from_model_name_or_path(pretrained_model_name_or_path: st
         from transformers import CLIPTextModel
 
         return CLIPTextModel
-    elif model_class == "RobertaSeriesModelWithTransformation":
-        from diffusers.pipelines.alt_diffusion.modeling_roberta_series import RobertaSeriesModelWithTransformation
+    elif model_class == "CLIPTextModelWithProjection":
+        from transformers import CLIPTextModelWithProjection
 
-        return RobertaSeriesModelWithTransformation
+        return CLIPTextModelWithProjection
     else:
         raise ValueError(f"{model_class} is not supported.")
 
@@ -210,8 +210,8 @@ def save_model_card(repo_id: str, image_logs=None, base_model=str, repo_folder=N
 license: creativeml-openrail-m
 base_model: {base_model}
 tags:
-- stable-diffusion
-- stable-diffusion-diffusers
+- stable-diffusion-xl
+- stable-diffusion-xl-diffusers
 - text-to-image
 - diffusers
 - controlnet
@@ -579,7 +579,7 @@ def parse_args(input_args=None):
     return args
 
 
-def make_train_dataset(args, tokenizer, accelerator):
+def get_train_dataset(args, accelerator):
     # Get the datasets: you can either provide your own training and evaluation files (see below)
     # or specify a Dataset from the hub (the dataset will be downloaded automatically from the datasets Hub).
 
@@ -636,25 +636,55 @@ def make_train_dataset(args, tokenizer, accelerator):
                 f"`--conditioning_image_column` value '{args.conditioning_image_column}' not found in dataset columns. Dataset columns are: {', '.join(column_names)}"
             )
 
-    def tokenize_captions(examples, is_train=True):
-        captions = []
-        for caption in examples[caption_column]:
-            if random.random() < args.proportion_empty_prompts:
-                captions.append("")
-            elif isinstance(caption, str):
-                captions.append(caption)
-            elif isinstance(caption, (list, np.ndarray)):
-                # take a random caption if there are multiple
-                captions.append(random.choice(caption) if is_train else caption[0])
-            else:
-                raise ValueError(
-                    f"Caption column `{caption_column}` should contain either strings or lists of strings."
-                )
-        inputs = tokenizer(
-            captions, max_length=tokenizer.model_max_length, padding="max_length", truncation=True, return_tensors="pt"
-        )
-        return inputs.input_ids
+    with accelerator.main_process_first():
+        if args.max_train_samples is not None:
+            train_dataset = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
 
+    return train_dataset
+
+
+# Adapted from pipelines.StableDiffusionXLPipeline.encode_prompt
+def encode_prompt(prompt_batch, text_encoders, tokenizers, proportion_empty_prompts, is_train=True):
+    prompt_embeds_list = []
+
+    captions = []
+    for caption in prompt_batch:
+        if random.random() < proportion_empty_prompts:
+            captions.append("")
+        elif isinstance(caption, str):
+            captions.append(caption)
+        elif isinstance(caption, (list, np.ndarray)):
+            # take a random caption if there are multiple
+            captions.append(random.choice(caption) if is_train else caption[0])
+
+    with torch.no_grad():
+        for tokenizer, text_encoder in zip(tokenizers, text_encoders):
+            text_inputs = tokenizer(
+                captions,
+                padding="max_length",
+                max_length=tokenizer.model_max_length,
+                truncation=True,
+                return_tensors="pt",
+            )
+            text_input_ids = text_inputs.input_ids
+            prompt_embeds = text_encoder(
+                text_input_ids.to(text_encoder.device),
+                output_hidden_states=True,
+            )
+
+            # We are only ALWAYS interested in the pooled output of the final text encoder
+            pooled_prompt_embeds = prompt_embeds[0]
+            prompt_embeds = prompt_embeds.hidden_states[-2]
+            bs_embed, seq_len, _ = prompt_embeds.shape
+            prompt_embeds = prompt_embeds.view(bs_embed, seq_len, -1)
+            prompt_embeds_list.append(prompt_embeds)
+
+    prompt_embeds = torch.concat(prompt_embeds_list, dim=-1)
+    pooled_prompt_embeds = pooled_prompt_embeds.view(bs_embed, -1)
+    return prompt_embeds, pooled_prompt_embeds
+
+
+def prepare_train_dataset(dataset):
     image_transforms = transforms.Compose(
         [
             transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
@@ -673,25 +703,18 @@ def make_train_dataset(args, tokenizer, accelerator):
     )
 
     def preprocess_train(examples):
-        images = [image.convert("RGB") for image in examples[image_column]]
+        images = [image.convert("RGB") for image in examples["image"]]
         images = [image_transforms(image) for image in images]
 
-        conditioning_images = [image.convert("RGB") for image in examples[conditioning_image_column]]
+        conditioning_images = [image.convert("RGB") for image in examples["conditioning_image"]]
         conditioning_images = [conditioning_image_transforms(image) for image in conditioning_images]
 
         examples["pixel_values"] = images
         examples["conditioning_pixel_values"] = conditioning_images
-        examples["input_ids"] = tokenize_captions(examples)
 
         return examples
 
-    with accelerator.main_process_first():
-        if args.max_train_samples is not None:
-            dataset["train"] = dataset["train"].shuffle(seed=args.seed).select(range(args.max_train_samples))
-        # Set the training transforms
-        train_dataset = dataset["train"].with_transform(preprocess_train)
-
-    return train_dataset
+    return dataset.with_transform(preprocess_train)
 
 
 def collate_fn(examples):
@@ -701,12 +724,16 @@ def collate_fn(examples):
     conditioning_pixel_values = torch.stack([example["conditioning_pixel_values"] for example in examples])
     conditioning_pixel_values = conditioning_pixel_values.to(memory_format=torch.contiguous_format).float()
 
-    input_ids = torch.stack([example["input_ids"] for example in examples])
+    prompt_ids = torch.stack([torch.tensor(example["prompt_embeds"]) for example in examples])
+
+    add_text_embeds = torch.stack([torch.tensor(example["text_embeds"]) for example in examples])
+    add_time_ids = torch.stack([torch.tensor(example["time_ids"]) for example in examples])
 
     return {
         "pixel_values": pixel_values,
         "conditioning_pixel_values": conditioning_pixel_values,
-        "input_ids": input_ids,
+        "prompt_ids": prompt_ids,
+        "unet_added_conditions": {"text_embeds": add_text_embeds, "time_ids": add_time_ids},
     }
 
 
@@ -750,28 +777,46 @@ def main(args):
                 repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
             ).repo_id
 
-    # Load the tokenizer
-    if args.tokenizer_name:
-        tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_name, revision=args.revision, use_fast=False)
-    elif args.pretrained_model_name_or_path:
-        tokenizer = AutoTokenizer.from_pretrained(
-            args.pretrained_model_name_or_path,
-            subfolder="tokenizer",
-            revision=args.revision,
-            use_fast=False,
-        )
+    # Load the tokenizers
+    tokenizer_one = AutoTokenizer.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="tokenizer",
+        revision=args.revision,
+        use_fast=False,
+        use_auth_token=True,
+    )
+    tokenizer_two = AutoTokenizer.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="tokenizer_2",
+        revision=args.revision,
+        use_fast=False,
+        use_auth_token=True,
+    )
 
-    # import correct text encoder class
-    text_encoder_cls = import_model_class_from_model_name_or_path(args.pretrained_model_name_or_path, args.revision)
+    # import correct text encoder classes
+    text_encoder_cls_one = import_model_class_from_model_name_or_path(
+        args.pretrained_model_name_or_path, args.revision
+    )
+    text_encoder_cls_two = import_model_class_from_model_name_or_path(
+        args.pretrained_model_name_or_path, args.revision, subfolder="text_encoder_2"
+    )
 
     # Load scheduler and models
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
-    text_encoder = text_encoder_cls.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
+    text_encoder_one = text_encoder_cls_one.from_pretrained(
+        args.pretrained_model_name_or_path,
+        subfolder="text_encoder",
+        revision=args.revision,
+        use_auth_token=True,
     )
-    vae = AutoencoderKL.from_pretrained(args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision)
+    text_encoder_two = text_encoder_cls_two.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="text_encoder_2", revision=args.revision, use_auth_token=True
+    )
+    vae = AutoencoderKL.from_pretrained(
+        args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision, use_auth_token=True
+    )
     unet = UNet2DConditionModel.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision
+        args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, use_auth_token=True
     )
 
     if args.controlnet_model_name_or_path:
@@ -813,7 +858,8 @@ def main(args):
 
     vae.requires_grad_(False)
     unet.requires_grad_(False)
-    text_encoder.requires_grad_(False)
+    text_encoder_one.requires_grad_(False)
+    text_encoder_two.requires_grad_(False)
     controlnet.train()
 
     if args.enable_xformers_memory_efficient_attention:
@@ -877,7 +923,50 @@ def main(args):
         eps=args.adam_epsilon,
     )
 
-    train_dataset = make_train_dataset(args, tokenizer, accelerator)
+    # Here, we compute not just the text embeddings but also the additional embeddings
+    # needed for the SD XL UNet to operate.
+    def compute_embeddings(batch, proportion_empty_prompts, text_encoders, tokenizers, is_train=True):
+        original_size = (args.resolution, args.resolution)
+        target_size = (args.resolution, args.resolution)
+        crops_coords_top_left = (0, 0)
+        prompt_batch = batch[args.caption_column]
+
+        prompt_embeds, pooled_prompt_embeds = encode_prompt(
+            prompt_batch, text_encoders, tokenizers, proportion_empty_prompts, is_train
+        )
+        add_text_embeds = pooled_prompt_embeds
+
+        # Adapted from pipeline.StableDiffusionXLPipeline._get_add_time_ids
+        add_time_ids = list(original_size + crops_coords_top_left + target_size)
+        add_time_ids = torch.tensor([add_time_ids])
+
+        prompt_embeds = prompt_embeds.to(accelerator.device)
+        add_text_embeds = add_text_embeds.to(accelerator.device)
+        add_time_ids = add_time_ids.repeat(len(prompt_batch), 1)
+        add_time_ids = add_time_ids.to(accelerator.device, dtype=prompt_embeds.dtype)
+        unet_added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
+
+        return {"prompt_embeds": prompt_embeds, **unet_added_cond_kwargs}
+
+    # Let's first compute all the embeddings so that we can free up the text encoders
+    # from memory.
+    text_encoders = [text_encoder_one, text_encoder_two]
+    tokenizers = [tokenizer_one, tokenizer_two]
+    train_dataset = get_train_dataset(args, accelerator)
+    compute_embeddings_fn = functools.partial(
+        compute_embeddings,
+        text_encoders=text_encoders,
+        tokenizers=tokenizers,
+        proportion_empty_prompts=args.proportion_empty_prompts,
+    )
+    train_dataset = train_dataset.map(compute_embeddings_fn, batched=True)
+
+    del text_encoders, tokenizers
+    gc.collect()
+    torch.cuda.empty_cache()
+
+    # Then get the training dataset ready to be passed to the dataloader.
+    train_dataset = prepare_train_dataset(train_dataset)
 
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
@@ -919,7 +1008,8 @@ def main(args):
     # Move vae, unet and text_encoder to device and cast to weight_dtype
     vae.to(accelerator.device, dtype=weight_dtype)
     unet.to(accelerator.device, dtype=weight_dtype)
-    text_encoder.to(accelerator.device, dtype=weight_dtype)
+    text_encoder_one.to(accelerator.device, dtype=weight_dtype)
+    text_encoder_two.to(accelerator.device, dtype=weight_dtype)
 
     # We need to recalculate our total training steps as the size of the training dataloader may have changed.
     num_update_steps_per_epoch = math.ceil(len(train_dataloader) / args.gradient_accumulation_steps)
@@ -1007,15 +1097,13 @@ def main(args):
                 # (this is the forward diffusion process)
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
-                # Get the text embedding for conditioning
-                encoder_hidden_states = text_encoder(batch["input_ids"])[0]
-
+                # ControlNet conditioning.
                 controlnet_image = batch["conditioning_pixel_values"].to(dtype=weight_dtype)
-
                 down_block_res_samples, mid_block_res_sample = controlnet(
                     noisy_latents,
                     timesteps,
-                    encoder_hidden_states=encoder_hidden_states,
+                    encoder_hidden_states=batch["input_ids"],
+                    added_cond_kwargs=batch["unet_added_conditions"],
                     controlnet_cond=controlnet_image,
                     return_dict=False,
                 )
@@ -1024,7 +1112,8 @@ def main(args):
                 model_pred = unet(
                     noisy_latents,
                     timesteps,
-                    encoder_hidden_states=encoder_hidden_states,
+                    encoder_hidden_states=batch["input_ids"],
+                    added_cond_kwargs=batch["unet_added_conditions"],
                     down_block_additional_residuals=[
                         sample.to(dtype=weight_dtype) for sample in down_block_res_samples
                     ],
@@ -1082,8 +1171,6 @@ def main(args):
                     if args.validation_prompt is not None and global_step % args.validation_steps == 0:
                         image_logs = log_validation(
                             vae,
-                            text_encoder,
-                            tokenizer,
                             unet,
                             controlnet,
                             args,
