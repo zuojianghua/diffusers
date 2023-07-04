@@ -944,6 +944,7 @@ def main(args):
             prompt_batch, text_encoders, tokenizers, proportion_empty_prompts, is_train
         )
         add_text_embeds = pooled_prompt_embeds
+        print("Text embeddings computed.")
 
         # Adapted from pipeline.StableDiffusionXLPipeline._get_add_time_ids
         add_time_ids = list(original_size + crops_coords_top_left + target_size)
@@ -954,7 +955,7 @@ def main(args):
         add_time_ids = add_time_ids.repeat(len(prompt_batch), 1)
         add_time_ids = add_time_ids.to(accelerator.device, dtype=prompt_embeds.dtype)
         unet_added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
-
+        print("Dictionaries prepared.")
         return {"prompt_embeds": prompt_embeds, **unet_added_cond_kwargs}
 
     # Let's first compute all the embeddings so that we can free up the text encoders
