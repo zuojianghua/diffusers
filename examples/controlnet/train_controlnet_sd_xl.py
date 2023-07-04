@@ -718,6 +718,9 @@ def prepare_train_dataset(dataset):
 
 
 def collate_fn(examples):
+    for example in examples: 
+        break 
+    print(f"From collate_fn: {example.keys()}")
     pixel_values = torch.stack([example["pixel_values"] for example in examples])
     pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
 
