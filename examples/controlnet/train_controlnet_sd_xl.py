@@ -645,7 +645,7 @@ def get_train_dataset(args, accelerator):
 
 # Adapted from pipelines.StableDiffusionXLPipeline.encode_prompt
 def encode_prompt(prompt_batch, text_encoders, tokenizers, proportion_empty_prompts, is_train=True):
-    print("Inside encode_prompt().")
+    # print("Inside encode_prompt().")
     prompt_embeds_list = []
 
     captions = []
@@ -668,13 +668,13 @@ def encode_prompt(prompt_batch, text_encoders, tokenizers, proportion_empty_prom
                 return_tensors="pt",
             )
             text_input_ids = text_inputs.input_ids
-            print("Tokenization done.")
-            print(text_encoder.device, text_input_ids.shape)
+            # print("Tokenization done.")
+            # print(text_encoder.device, text_input_ids.shape)
             prompt_embeds = text_encoder(
                 text_input_ids.to(text_encoder.device),
                 output_hidden_states=True,
             )
-            print("text emebeddings computed.")
+            # print("text emebeddings computed.")
 
             # We are only ALWAYS interested in the pooled output of the final text encoder
             pooled_prompt_embeds = prompt_embeds[0]
@@ -686,7 +686,7 @@ def encode_prompt(prompt_batch, text_encoders, tokenizers, proportion_empty_prom
 
     prompt_embeds = torch.concat(prompt_embeds_list, dim=-1)
     pooled_prompt_embeds = pooled_prompt_embeds.view(bs_embed, -1)
-    print("Encode prompts method done executing.")
+    # print("Encode prompts method done executing.")
     return prompt_embeds, pooled_prompt_embeds
 
 
@@ -964,7 +964,7 @@ def main(args):
             prompt_batch, text_encoders, tokenizers, proportion_empty_prompts, is_train
         )
         add_text_embeds = pooled_prompt_embeds
-        print("Text embeddings computed.")
+        # print("Text embeddings computed.")
 
         # Adapted from pipeline.StableDiffusionXLPipeline._get_add_time_ids
         add_time_ids = list(original_size + crops_coords_top_left + target_size)
@@ -975,7 +975,7 @@ def main(args):
         add_time_ids = add_time_ids.repeat(len(prompt_batch), 1)
         add_time_ids = add_time_ids.to(accelerator.device, dtype=prompt_embeds.dtype)
         unet_added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
-        print("Dictionaries prepared.")
+        # print("Dictionaries prepared.")
         return {"prompt_embeds": prompt_embeds, **unet_added_cond_kwargs}
 
     # Let's first compute all the embeddings so that we can free up the text encoders
