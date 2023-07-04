@@ -684,7 +684,7 @@ def encode_prompt(prompt_batch, text_encoders, tokenizers, proportion_empty_prom
     return prompt_embeds, pooled_prompt_embeds
 
 
-def prepare_train_dataset(dataset):
+def prepare_train_dataset(dataset, accelerator):
     image_transforms = transforms.Compose(
         [
             transforms.Resize(args.resolution, interpolation=transforms.InterpolationMode.BILINEAR),
@@ -713,7 +713,10 @@ def prepare_train_dataset(dataset):
         examples["conditioning_pixel_values"] = conditioning_images
 
         return examples
-
+    
+    with accelerator.main_process_first():
+        dataset = dataset.with_transform(preprocess_train)
+    
     return dataset.with_transform(preprocess_train)
 
 
@@ -972,7 +975,7 @@ def main(args):
     torch.cuda.empty_cache()
 
     # Then get the training dataset ready to be passed to the dataloader.
-    train_dataset = prepare_train_dataset(train_dataset)
+    train_dataset = prepare_train_dataset(train_dataset, accelerator)
 
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset,
