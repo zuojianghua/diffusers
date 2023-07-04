@@ -703,8 +703,8 @@ def prepare_train_dataset(dataset, accelerator):
     )
 
     def preprocess_train(examples):
-        print("Inside preprocess_train of prepare_train_dataset")
-        print(examples.keys())
+        # print("Inside preprocess_train of prepare_train_dataset")
+        # print(examples.keys())
         images = [image.convert("RGB") for image in examples[args.image_column]]
         images = [image_transforms(image) for image in images]
 
@@ -725,7 +725,7 @@ def prepare_train_dataset(dataset, accelerator):
 def collate_fn(examples):
     for example in examples: 
         break 
-    print(f"From collate_fn: {example.keys()}")
+    # print(f"From collate_fn: {example.keys()}")
     pixel_values = torch.stack([example["pixel_values"] for example in examples])
     pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
 
@@ -969,8 +969,8 @@ def main(args):
         proportion_empty_prompts=args.proportion_empty_prompts,
     )
     with accelerator.main_process_first():
-        train_dataset = train_dataset.with_transform(compute_embeddings_fn)
-        # train_dataset = train_dataset.map(compute_embeddings_fn, batched=True)
+        # train_dataset = train_dataset.with_transform(compute_embeddings_fn)
+        train_dataset = train_dataset.map(compute_embeddings_fn, batched=True)
 
     del text_encoders, tokenizers
     gc.collect()
