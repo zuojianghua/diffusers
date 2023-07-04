@@ -645,6 +645,7 @@ def get_train_dataset(args, accelerator):
 
 # Adapted from pipelines.StableDiffusionXLPipeline.encode_prompt
 def encode_prompt(prompt_batch, text_encoders, tokenizers, proportion_empty_prompts, is_train=True):
+    print("Inside encode_prompt().")
     prompt_embeds_list = []
 
     captions = []
@@ -678,6 +679,7 @@ def encode_prompt(prompt_batch, text_encoders, tokenizers, proportion_empty_prom
             bs_embed, seq_len, _ = prompt_embeds.shape
             prompt_embeds = prompt_embeds.view(bs_embed, seq_len, -1)
             prompt_embeds_list.append(prompt_embeds)
+            print("Embeddings computed.")
 
     prompt_embeds = torch.concat(prompt_embeds_list, dim=-1)
     pooled_prompt_embeds = pooled_prompt_embeds.view(bs_embed, -1)
