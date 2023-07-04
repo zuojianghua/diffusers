@@ -657,7 +657,7 @@ def encode_prompt(prompt_batch, text_encoders, tokenizers, proportion_empty_prom
         elif isinstance(caption, (list, np.ndarray)):
             # take a random caption if there are multiple
             captions.append(random.choice(caption) if is_train else caption[0])
-    print(f"Captions prepared: {len(captions)}")
+    # print(f"Captions prepared: {len(captions)}")
     with torch.no_grad():
         for tokenizer, text_encoder in zip(tokenizers, text_encoders):
             text_inputs = tokenizer(
@@ -682,7 +682,7 @@ def encode_prompt(prompt_batch, text_encoders, tokenizers, proportion_empty_prom
             bs_embed, seq_len, _ = prompt_embeds.shape
             prompt_embeds = prompt_embeds.view(bs_embed, seq_len, -1)
             prompt_embeds_list.append(prompt_embeds)
-            print("Embeddings computed.")
+            # print("Embeddings computed.")
 
     prompt_embeds = torch.concat(prompt_embeds_list, dim=-1)
     pooled_prompt_embeds = pooled_prompt_embeds.view(bs_embed, -1)
@@ -954,7 +954,7 @@ def main(args):
     # Here, we compute not just the text embeddings but also the additional embeddings
     # needed for the SD XL UNet to operate.
     def compute_embeddings(batch, proportion_empty_prompts, text_encoders, tokenizers, is_train=True):
-        print(f"Inside compute embeddings function: {len(batch[args.caption_column])}")
+        # print(f"Inside compute embeddings function: {len(batch[args.caption_column])}")
         original_size = (args.resolution, args.resolution)
         target_size = (args.resolution, args.resolution)
         crops_coords_top_left = (0, 0)
