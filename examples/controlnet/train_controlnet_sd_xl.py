@@ -1121,7 +1121,7 @@ def main(args):
                 down_block_res_samples, mid_block_res_sample = controlnet(
                     noisy_latents,
                     timesteps,
-                    encoder_hidden_states=batch["input_ids"],
+                    encoder_hidden_states=batch["prompt_ids"],
                     added_cond_kwargs=batch["unet_added_conditions"],
                     controlnet_cond=controlnet_image,
                     return_dict=False,
@@ -1131,7 +1131,7 @@ def main(args):
                 model_pred = unet(
                     noisy_latents,
                     timesteps,
-                    encoder_hidden_states=batch["input_ids"],
+                    encoder_hidden_states=batch["prompt_ids"],
                     added_cond_kwargs=batch["unet_added_conditions"],
                     down_block_additional_residuals=[
                         sample.to(dtype=weight_dtype) for sample in down_block_res_samples
