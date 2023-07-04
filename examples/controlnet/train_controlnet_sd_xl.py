@@ -669,6 +669,7 @@ def encode_prompt(prompt_batch, text_encoders, tokenizers, proportion_empty_prom
             )
             text_input_ids = text_inputs.input_ids
             print("Tokenization done.")
+            print(text_encoder.device, text_input_ids.shape)
             prompt_embeds = text_encoder(
                 text_input_ids.to(text_encoder.device),
                 output_hidden_states=True,
