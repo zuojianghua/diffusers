@@ -657,7 +657,7 @@ def encode_prompt(prompt_batch, text_encoders, tokenizers, proportion_empty_prom
         elif isinstance(caption, (list, np.ndarray)):
             # take a random caption if there are multiple
             captions.append(random.choice(caption) if is_train else caption[0])
-
+    print(f"Captions prepared: {len(captions)}")
     with torch.no_grad():
         for tokenizer, text_encoder in zip(tokenizers, text_encoders):
             text_inputs = tokenizer(
@@ -668,10 +668,12 @@ def encode_prompt(prompt_batch, text_encoders, tokenizers, proportion_empty_prom
                 return_tensors="pt",
             )
             text_input_ids = text_inputs.input_ids
+            print("Tokenization done.")
             prompt_embeds = text_encoder(
                 text_input_ids.to(text_encoder.device),
                 output_hidden_states=True,
             )
+            print("text emebeddings computed.")
 
             # We are only ALWAYS interested in the pooled output of the final text encoder
             pooled_prompt_embeds = prompt_embeds[0]
