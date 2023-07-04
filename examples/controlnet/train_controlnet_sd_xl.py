@@ -45,7 +45,7 @@ from diffusers import (
     AutoencoderKL,
     ControlNetModel,
     DDPMScheduler,
-    StableDiffusionControlNetPipeline,
+    StableDiffusionXLControlNetPipeline,
     UNet2DConditionModel,
     UniPCMultistepScheduler,
 )
@@ -79,7 +79,7 @@ def log_validation(vae, unet, controlnet, args, accelerator, weight_dtype, step)
 
     controlnet = accelerator.unwrap_model(controlnet)
 
-    pipeline = StableDiffusionControlNetPipeline.from_pretrained(
+    pipeline = StableDiffusionXLControlNetPipeline.from_pretrained(
         args.pretrained_model_name_or_path,
         vae=vae,
         unet=unet,
