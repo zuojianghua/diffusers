@@ -1098,6 +1098,7 @@ def main(args):
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
                 # ControlNet conditioning.
+                print(f"From training: {batch['unet_added_conditions']}")
                 controlnet_image = batch["conditioning_pixel_values"].to(dtype=weight_dtype)
                 down_block_res_samples, mid_block_res_sample = controlnet(
                     noisy_latents,
