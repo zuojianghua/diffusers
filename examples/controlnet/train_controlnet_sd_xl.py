@@ -959,7 +959,8 @@ def main(args):
         tokenizers=tokenizers,
         proportion_empty_prompts=args.proportion_empty_prompts,
     )
-    train_dataset = train_dataset.map(compute_embeddings_fn, batched=True)
+    with accelerator.main_process_first():
+        train_dataset = train_dataset.map(compute_embeddings_fn, batched=True)
 
     del text_encoders, tokenizers
     gc.collect()
