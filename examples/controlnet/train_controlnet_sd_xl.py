@@ -926,6 +926,7 @@ def main(args):
     # Here, we compute not just the text embeddings but also the additional embeddings
     # needed for the SD XL UNet to operate.
     def compute_embeddings(batch, proportion_empty_prompts, text_encoders, tokenizers, is_train=True):
+        print(f"Inside compute embeddings function: {len(batch[args.caption_column])}")
         original_size = (args.resolution, args.resolution)
         target_size = (args.resolution, args.resolution)
         crops_coords_top_left = (0, 0)
@@ -960,7 +961,8 @@ def main(args):
         proportion_empty_prompts=args.proportion_empty_prompts,
     )
     with accelerator.main_process_first():
-        train_dataset = train_dataset.map(compute_embeddings_fn, batched=True)
+        train_dataset = train_dataset.with_transform(compute_embeddings_fn)
+        # train_dataset = train_dataset.map(compute_embeddings_fn, batched=True)
 
     del text_encoders, tokenizers
     gc.collect()
