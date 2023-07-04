@@ -681,6 +681,7 @@ def encode_prompt(prompt_batch, text_encoders, tokenizers, proportion_empty_prom
 
     prompt_embeds = torch.concat(prompt_embeds_list, dim=-1)
     pooled_prompt_embeds = pooled_prompt_embeds.view(bs_embed, -1)
+    print("Encode prompts method done executing.")
     return prompt_embeds, pooled_prompt_embeds
 
 
