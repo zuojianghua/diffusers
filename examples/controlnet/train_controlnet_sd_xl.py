@@ -721,16 +721,16 @@ def prepare_train_dataset(dataset, accelerator):
         examples["conditioning_pixel_values"] = conditioning_images
 
         return examples
-    
+
     with accelerator.main_process_first():
         dataset = dataset.with_transform(preprocess_train)
-    
+
     return dataset.with_transform(preprocess_train)
 
 
 def collate_fn(examples):
-    for example in examples: 
-        break 
+    for example in examples:
+        break
     # print(f"From collate_fn: {example.keys()}")
     pixel_values = torch.stack([example["pixel_values"] for example in examples])
     pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
@@ -946,7 +946,7 @@ def main(args):
         weight_dtype = torch.bfloat16
 
     # Move vae, unet and text_encoder to device and cast to weight_dtype
-    # The VAE is in float32 to avoid NaN losses. 
+    # The VAE is in float32 to avoid NaN losses.
     vae.to(accelerator.device, dtype=torch.float32)
     unet.to(accelerator.device, dtype=weight_dtype)
     text_encoder_one.to(accelerator.device, dtype=weight_dtype)
