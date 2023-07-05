@@ -82,7 +82,7 @@ def log_validation(controlnet, args, accelerator, weight_dtype, step):
 
     pipeline = StableDiffusionXLControlNetPipeline.from_pretrained(
         args.pretrained_model_name_or_path,
-        controlnet=controlnet.to(accelerator.device, dtype=weight_dtype),
+        controlnet=controlnet,
         safety_checker=None,
         revision=args.revision,
         torch_dtype=weight_dtype,
