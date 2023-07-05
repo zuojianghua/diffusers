@@ -90,6 +90,11 @@ def log_validation(controlnet, args, accelerator, weight_dtype, step):
     pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config)
     pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
+    print(f"Text encoder: {pipeline.text_encoder.device}, {pipeline.text_encoder.dtype}")
+    print(f"Text encoder two: {pipeline.text_encoder_2.device}, {pipeline.text_encoder_2.dtype}")
+    print(f"VAE: {pipeline.vae.device}, {pipeline.vae.dtype}")
+    print(f"UNet: {pipeline.unet.device}, {pipeline.unet.dtype}")
+    print(f"ControlNet: {pipeline.controlnet.device}, {pipeline.controlnet.dtype}")
 
     if args.enable_xformers_memory_efficient_attention:
         pipeline.enable_xformers_memory_efficient_attention()
