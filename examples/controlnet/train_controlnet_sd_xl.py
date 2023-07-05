@@ -78,7 +78,7 @@ def log_validation(controlnet, args, accelerator, weight_dtype, step):
     logger.info("Running validation... ")
 
     controlnet = accelerator.unwrap_model(controlnet)
-    print(f"From validation utility: {controlnet.dtype}, {controlnet.device}")
+    # print(f"From validation utility: {controlnet.dtype}, {controlnet.device}")
 
     pipeline = StableDiffusionXLControlNetPipeline.from_pretrained(
         args.pretrained_model_name_or_path,
@@ -90,11 +90,11 @@ def log_validation(controlnet, args, accelerator, weight_dtype, step):
     pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config)
     pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
-    print(f"Text encoder: {pipeline.text_encoder.device}, {pipeline.text_encoder.dtype}")
-    print(f"Text encoder two: {pipeline.text_encoder_2.device}, {pipeline.text_encoder_2.dtype}")
-    print(f"VAE: {pipeline.vae.device}, {pipeline.vae.dtype}")
-    print(f"UNet: {pipeline.unet.device}, {pipeline.unet.dtype}")
-    print(f"ControlNet: {pipeline.controlnet.device}, {pipeline.controlnet.dtype}")
+    # print(f"Text encoder: {pipeline.text_encoder.device}, {pipeline.text_encoder.dtype}")
+    # print(f"Text encoder two: {pipeline.text_encoder_2.device}, {pipeline.text_encoder_2.dtype}")
+    # print(f"VAE: {pipeline.vae.device}, {pipeline.vae.dtype}")
+    # print(f"UNet: {pipeline.unet.device}, {pipeline.unet.dtype}")
+    # print(f"ControlNet: {pipeline.controlnet.device}, {pipeline.controlnet.dtype}")
 
     if args.enable_xformers_memory_efficient_attention:
         pipeline.enable_xformers_memory_efficient_attention()
@@ -126,11 +126,10 @@ def log_validation(controlnet, args, accelerator, weight_dtype, step):
         images = []
 
         for _ in range(args.num_validation_images):
-            # with torch.autocast("cuda"):
-            image = pipeline(
-                validation_prompt, validation_image, num_inference_steps=20, generator=generator
-            ).images[0]
-
+            with torch.autocast("cuda"):
+                image = pipeline(
+                    validation_prompt, validation_image, num_inference_steps=20, generator=generator
+                ).images[0]
             images.append(image)
 
         image_logs.append(
