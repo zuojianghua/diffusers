@@ -78,6 +78,7 @@ def log_validation(controlnet, args, accelerator, weight_dtype, step):
     logger.info("Running validation... ")
 
     controlnet = accelerator.unwrap_model(controlnet)
+    print(f"From validation utility: {controlnet.dtype}, {controlnet.device}")
 
     pipeline = StableDiffusionXLControlNetPipeline.from_pretrained(
         args.pretrained_model_name_or_path,
