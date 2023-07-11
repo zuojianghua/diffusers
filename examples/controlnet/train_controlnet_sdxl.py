@@ -78,7 +78,6 @@ def log_validation(controlnet, args, accelerator, weight_dtype, step):
     logger.info("Running validation... ")
 
     controlnet = accelerator.unwrap_model(controlnet)
-    # print(f"From validation utility: {controlnet.dtype}, {controlnet.device}")
 
     pipeline = StableDiffusionXLControlNetPipeline.from_pretrained(
         args.pretrained_model_name_or_path,
@@ -90,11 +89,6 @@ def log_validation(controlnet, args, accelerator, weight_dtype, step):
     pipeline.scheduler = UniPCMultistepScheduler.from_config(pipeline.scheduler.config)
     pipeline = pipeline.to(accelerator.device)
     pipeline.set_progress_bar_config(disable=True)
-    # print(f"Text encoder: {pipeline.text_encoder.device}, {pipeline.text_encoder.dtype}")
-    # print(f"Text encoder two: {pipeline.text_encoder_2.device}, {pipeline.text_encoder_2.dtype}")
-    # print(f"VAE: {pipeline.vae.device}, {pipeline.vae.dtype}")
-    # print(f"UNet: {pipeline.unet.device}, {pipeline.unet.dtype}")
-    # print(f"ControlNet: {pipeline.controlnet.device}, {pipeline.controlnet.dtype}")
 
     if args.enable_xformers_memory_efficient_attention:
         pipeline.enable_xformers_memory_efficient_attention()
@@ -284,6 +278,18 @@ def parse_args(input_args=None):
             "The resolution for input images, all the images in the train/validation dataset will be resized to this"
             " resolution"
         ),
+    )
+    parser.add_argument(
+        "--crops_coords_top_left_h",
+        type=int,
+        default=0,
+        help=("Coordinate for (the height) to be included in the crop coordinate embeddings needed by SDXL UNet."),
+    )
+    parser.add_argument(
+        "--crops_coords_top_left_w",
+        type=int,
+        default=0,
+        help=("Coordinate for (the height) to be included in the crop coordinate embeddings needed by SDXL UNet."),
     )
     parser.add_argument(
         "--train_batch_size", type=int, default=4, help="Batch size (per device) for the training dataloader."
@@ -648,7 +654,6 @@ def get_train_dataset(args, accelerator):
 
 # Adapted from pipelines.StableDiffusionXLPipeline.encode_prompt
 def encode_prompt(prompt_batch, text_encoders, tokenizers, proportion_empty_prompts, is_train=True):
-    # print("Inside encode_prompt().")
     prompt_embeds_list = []
 
     captions = []
@@ -660,7 +665,7 @@ def encode_prompt(prompt_batch, text_encoders, tokenizers, proportion_empty_prom
         elif isinstance(caption, (list, np.ndarray)):
             # take a random caption if there are multiple
             captions.append(random.choice(caption) if is_train else caption[0])
-    # print(f"Captions prepared: {len(captions)}")
+
     with torch.no_grad():
         for tokenizer, text_encoder in zip(tokenizers, text_encoders):
             text_inputs = tokenizer(
@@ -671,13 +676,10 @@ def encode_prompt(prompt_batch, text_encoders, tokenizers, proportion_empty_prom
                 return_tensors="pt",
             )
             text_input_ids = text_inputs.input_ids
-            # print("Tokenization done.")
-            # print(text_encoder.device, text_input_ids.shape)
             prompt_embeds = text_encoder(
                 text_input_ids.to(text_encoder.device),
                 output_hidden_states=True,
             )
-            # print("text emebeddings computed.")
 
             # We are only ALWAYS interested in the pooled output of the final text encoder
             pooled_prompt_embeds = prompt_embeds[0]
@@ -685,11 +687,9 @@ def encode_prompt(prompt_batch, text_encoders, tokenizers, proportion_empty_prom
             bs_embed, seq_len, _ = prompt_embeds.shape
             prompt_embeds = prompt_embeds.view(bs_embed, seq_len, -1)
             prompt_embeds_list.append(prompt_embeds)
-            # print("Embeddings computed.")
 
     prompt_embeds = torch.concat(prompt_embeds_list, dim=-1)
     pooled_prompt_embeds = pooled_prompt_embeds.view(bs_embed, -1)
-    # print("Encode prompts method done executing.")
     return prompt_embeds, pooled_prompt_embeds
 
 
@@ -712,8 +712,6 @@ def prepare_train_dataset(dataset, accelerator):
     )
 
     def preprocess_train(examples):
-        # print("Inside preprocess_train of prepare_train_dataset")
-        # print(examples.keys())
         images = [image.convert("RGB") for image in examples[args.image_column]]
         images = [image_transforms(image) for image in images]
 
@@ -728,13 +726,10 @@ def prepare_train_dataset(dataset, accelerator):
     with accelerator.main_process_first():
         dataset = dataset.with_transform(preprocess_train)
 
-    return dataset.with_transform(preprocess_train)
+    return dataset
 
 
 def collate_fn(examples):
-    for example in examples:
-        break
-    # print(f"From collate_fn: {example.keys()}")
     pixel_values = torch.stack([example["pixel_values"] for example in examples])
     pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
 
@@ -791,23 +786,18 @@ def main(args):
 
         if args.push_to_hub:
             repo_id = create_repo(
-                repo_id=args.hub_model_id or Path(args.output_dir).name, exist_ok=True, token=args.hub_token
+                repo_id=args.hub_model_id or Path(args.output_dir).name,
+                exist_ok=True,
+                token=args.hub_token,
+                private=True,
             ).repo_id
 
     # Load the tokenizers
     tokenizer_one = AutoTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path,
-        subfolder="tokenizer",
-        revision=args.revision,
-        use_fast=False,
-        use_auth_token=True,
+        args.pretrained_model_name_or_path, subfolder="tokenizer", revision=args.revision, use_fast=False
     )
     tokenizer_two = AutoTokenizer.from_pretrained(
-        args.pretrained_model_name_or_path,
-        subfolder="tokenizer_2",
-        revision=args.revision,
-        use_fast=False,
-        use_auth_token=True,
+        args.pretrained_model_name_or_path, subfolder="tokenizer_2", revision=args.revision, use_fast=False
     )
 
     # import correct text encoder classes
@@ -821,16 +811,15 @@ def main(args):
     # Load scheduler and models
     noise_scheduler = DDPMScheduler.from_pretrained(args.pretrained_model_name_or_path, subfolder="scheduler")
     text_encoder_one = text_encoder_cls_one.from_pretrained(
-        args.pretrained_model_name_or_path,
-        subfolder="text_encoder",
-        revision=args.revision,
-        use_auth_token=True,
+        args.pretrained_model_name_or_path, subfolder="text_encoder", revision=args.revision
     )
     text_encoder_two = text_encoder_cls_two.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="text_encoder_2", revision=args.revision, use_auth_token=True
+        args.pretrained_model_name_or_path, subfolder="text_encoder_2", revision=args.revision
     )
     vae = AutoencoderKL.from_pretrained(
-        args.pretrained_model_name_or_path, subfolder="vae", revision=args.revision, use_auth_token=True
+        args.pretrained_model_name_or_path,
+        subfolder="vae",
+        revision=args.revision,
     )
     unet = UNet2DConditionModel.from_pretrained(
         args.pretrained_model_name_or_path, subfolder="unet", revision=args.revision, use_auth_token=True
@@ -958,17 +947,15 @@ def main(args):
     # Here, we compute not just the text embeddings but also the additional embeddings
     # needed for the SD XL UNet to operate.
     def compute_embeddings(batch, proportion_empty_prompts, text_encoders, tokenizers, is_train=True):
-        # print(f"Inside compute embeddings function: {len(batch[args.caption_column])}")
         original_size = (args.resolution, args.resolution)
         target_size = (args.resolution, args.resolution)
-        crops_coords_top_left = (0, 0)
+        crops_coords_top_left = (args.crops_coords_top_left_h, args.crops_coords_top_left_w)
         prompt_batch = batch[args.caption_column]
 
         prompt_embeds, pooled_prompt_embeds = encode_prompt(
             prompt_batch, text_encoders, tokenizers, proportion_empty_prompts, is_train
         )
         add_text_embeds = pooled_prompt_embeds
-        # print("Text embeddings computed.")
 
         # Adapted from pipeline.StableDiffusionXLPipeline._get_add_time_ids
         add_time_ids = list(original_size + crops_coords_top_left + target_size)
@@ -979,7 +966,7 @@ def main(args):
         add_time_ids = add_time_ids.repeat(len(prompt_batch), 1)
         add_time_ids = add_time_ids.to(accelerator.device, dtype=prompt_embeds.dtype)
         unet_added_cond_kwargs = {"text_embeds": add_text_embeds, "time_ids": add_time_ids}
-        # print("Dictionaries prepared.")
+
         return {"prompt_embeds": prompt_embeds, **unet_added_cond_kwargs}
 
     # Let's first compute all the embeddings so that we can free up the text encoders
@@ -994,7 +981,6 @@ def main(args):
         proportion_empty_prompts=args.proportion_empty_prompts,
     )
     with accelerator.main_process_first():
-        # train_dataset = train_dataset.with_transform(compute_embeddings_fn)
         train_dataset = train_dataset.map(compute_embeddings_fn, batched=True)
 
     del text_encoders, tokenizers
@@ -1121,7 +1107,6 @@ def main(args):
                 noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
 
                 # ControlNet conditioning.
-                # print(f"From training: {batch['unet_added_conditions']}")
                 controlnet_image = batch["conditioning_pixel_values"].to(dtype=weight_dtype)
                 down_block_res_samples, mid_block_res_sample = controlnet(
                     noisy_latents,
