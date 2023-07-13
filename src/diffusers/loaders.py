@@ -42,6 +42,7 @@ from .utils import (
     deprecate,
     is_safetensors_available,
     is_transformers_available,
+    is_accelerate_available,
     logging,
 )
 
@@ -52,6 +53,8 @@ if is_safetensors_available():
 if is_transformers_available():
     from transformers import CLIPTextModel, PreTrainedModel, PreTrainedTokenizer
 
+if is_accelerate_available():
+    import accelerate
 
 logger = logging.get_logger(__name__)
 
