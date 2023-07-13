@@ -761,9 +761,8 @@ class TextualInversionLoaderMixin:
                 if not is_accelerate_available() or is_accelerate_version("<", "0.14.0"):
                     raise ValueError("Not possible")
 
-                print(hasattr(module, "_hf_hook") and not isinstance(
-                    module._hf_hook, (accelerate.hooks.CpuOffload, accelerate.hooks.AlignDevicesHook)
-                ))
+                print(hasattr(module, "_hf_hook"))
+                print(type(module._hf_hook))
             
             module_is_sequentially_offloaded(self.text_encoder)
 
