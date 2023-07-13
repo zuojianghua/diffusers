@@ -43,6 +43,7 @@ from .utils import (
     is_safetensors_available,
     is_transformers_available,
     is_accelerate_available,
+    is_accelerate_version,
     logging,
 )
 
@@ -755,10 +756,17 @@ class TextualInversionLoaderMixin:
                 logger.info(f"The loaded token: {loaded_token} is overwritten by the passed token {token}.")
             else:
                 token = loaded_token
+
+            def module_is_sequentially_offloaded(module):
+                if not is_accelerate_available() or is_accelerate_version("<", "0.14.0"):
+                    raise ValueError("Not possible")
+
+                print(hasattr(module, "_hf_hook") and not isinstance(
+                    module._hf_hook, (accelerate.hooks.CpuOffload, accelerate.hooks.AlignDevicesHook)
+                ))
             
-            hf_hook = hasattr(self.text_encoder, "_hf_hook") and isinstance(self.text_encoder._hf_hook, accelerate.hooks.CpuOffload)
-            print(f"From loading textual inversion: {hf_hook}")
-            print(f"From loading textual inversion: {self.text_encoder.dtype}, {self.text_encoder.device}")
+            module_is_sequentially_offloaded(self.text_encoder)
+
             embedding = embedding.to(dtype=self.text_encoder.dtype, device=self.text_encoder.device)
             print(f"From loading textual inversion: {embedding.dtype}, {embedding.device}")
             
