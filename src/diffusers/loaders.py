@@ -765,8 +765,8 @@ class TextualInversionLoaderMixin:
                 print(type(module._hf_hook))
             
             module_is_sequentially_offloaded(self.text_encoder)
-
-            embedding = embedding.to(dtype=self.text_encoder.dtype, device=self.text_encoder.device)
+            device = "cuda" 
+            embedding = embedding.to(dtype=self.text_encoder.dtype, device=device)
             print(f"From loading textual inversion (text encoder): {self.text_encoder.dtype}, {self.text_encoder.device}")
             print(f"From loading textual inversion (embedding): {embedding.dtype}, {embedding.device}")
             
