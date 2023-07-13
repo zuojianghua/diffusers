@@ -767,7 +767,8 @@ class TextualInversionLoaderMixin:
             module_is_sequentially_offloaded(self.text_encoder)
 
             embedding = embedding.to(dtype=self.text_encoder.dtype, device=self.text_encoder.device)
-            print(f"From loading textual inversion: {embedding.dtype}, {embedding.device}")
+            print(f"From loading textual inversion (text encoder): {self.text_encoder.dtype}, {self.text_encoder.device}")
+            print(f"From loading textual inversion (embedding): {embedding.dtype}, {embedding.device}")
             
             # 3. Make sure we don't mess up the tokenizer or text encoder
             vocab = self.tokenizer.get_vocab()
