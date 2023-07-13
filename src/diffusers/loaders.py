@@ -752,9 +752,13 @@ class TextualInversionLoaderMixin:
                 logger.info(f"The loaded token: {loaded_token} is overwritten by the passed token {token}.")
             else:
                 token = loaded_token
-
+            
+            hf_hook = hasattr(self.text_encoder, "_hf_hook") and isinstance(self.text_encoder._hf_hook, accelerate.hooks.CpuOffload)
+            print(f"From loading textual inversion: {hf_hook}")
+            print(f"From loading textual inversion: {self.text_encoder.dtype}, {self.text_encoder.device}")
             embedding = embedding.to(dtype=self.text_encoder.dtype, device=self.text_encoder.device)
-
+            print(f"From loading textual inversion: {embedding.dtype}, {embedding.device}")
+            
             # 3. Make sure we don't mess up the tokenizer or text encoder
             vocab = self.tokenizer.get_vocab()
             if token in vocab:
